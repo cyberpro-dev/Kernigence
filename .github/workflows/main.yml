@@ -1,0 +1,47 @@
+name: Enforce Label Usage
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+jobs:
+  enforce-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce labels
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Label czars allowed to do anything
+            const authorizedUsers = ['cyberpro-dev']; 
+
+            // Allowed labels for everyone else (spelling tweak: 'enhancements')
+            const allowedLabels = ['zero day', 'critical bug', 'bug', 'enhancements'];
+
+            const actor = context.actor;
+            const label = context.payload.label.name.toLowerCase(); // case insensitive match
+
+            if (!authorizedUsers.includes(actor)) {
+              if (!allowedLabels.includes(label)) {
+                const issueNumber = context.payload.issue?.number || context.payload.pull_request?.number;
+
+                // Remove the unauthorized label
+                await github.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: context.payload.label.name, // use original case-sensitive label name here
+                });
+
+                // Comment politely
+                await github.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `Hey @${actor}, heads up! You can only use these labels: ${allowedLabels.join(', ')}. I removed the label \`${context.payload.label.name}\` you added.`,
+                });
+              }
+            }
